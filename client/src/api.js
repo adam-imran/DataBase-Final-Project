@@ -5,7 +5,8 @@ export async function apiFetch(path) {
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`)
   }
-  return response.json()
+  const json = await response.json()
+  return json.data !== undefined ? json.data : json
 }
 
 export default apiFetch

@@ -16,7 +16,7 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    apiFetch('/dashboard')
+    apiFetch('/reports/dashboard')
       .then(data => setStats(data))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
@@ -37,7 +37,7 @@ export default function Dashboard() {
     totalCustomers = 0,
     totalProducts = 0,
     totalRevenue = 0,
-    orderStatusBreakdown = [],
+    ordersByStatus = [],
     recentActivity = [],
   } = stats || {}
 
@@ -78,12 +78,12 @@ export default function Dashboard() {
           <div className="card-header">
             <span className="card-title">Order Status Breakdown</span>
           </div>
-          {orderStatusBreakdown.length === 0 ? (
+          {ordersByStatus.length === 0 ? (
             <div className="empty-state">No order data available.</div>
           ) : (
             <div className="status-list">
-              {orderStatusBreakdown.map((item) => {
-                const status = item.status || item.order_status || 'Unknown'
+              {ordersByStatus.map((item) => {
+                const status = item._id || item.status || item.order_status || 'Unknown'
                 const count = item.count || item.total || 0
                 const badgeClass = STATUS_BADGE[status] || 'badge-gray'
                 return (
