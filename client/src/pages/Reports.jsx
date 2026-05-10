@@ -3,128 +3,136 @@ import apiFetch from '../api.js'
 
 const REPORTS = [
   {
-    id: 'revenue-by-category',
+    id: 'revenue',
+    icon: '💹',
     title: 'Monthly Revenue by Category',
+    sql: 'SELECT category, month, year, SUM(qty×price) AS revenue\nFROM OrderItems JOIN Orders JOIN Categories\nWHERE status=Delivered GROUP BY category, year, month\nORDER BY revenue DESC',
     endpoint: '/reports/revenue-by-category',
-    description: 'Revenue breakdown grouped by product category per month.',
+    columns: ['category', 'year', 'month', 'revenue'],
+    color: 'rgba(16,185,129,0.12)',
+    border: 'rgba(16,185,129,0.3)',
+    fmt: { revenue: v => `PKR ${Number(v).toLocaleString()}` },
   },
   {
     id: 'top-products',
+    icon: '🏆',
     title: 'Top 5 Best-Selling Products',
+    sql: 'SELECT name, category, SUM(quantity) AS totalSold,\nSUM(qty×price) AS revenue\nFROM OrderItems JOIN Products\nGROUP BY product ORDER BY totalSold DESC LIMIT 5',
     endpoint: '/reports/top-products',
-    description: 'The five products with the highest total sales volume.',
+    columns: ['productName', 'category', 'totalSold', 'totalRevenue'],
+    color: 'rgba(245,158,11,0.12)',
+    border: 'rgba(245,158,11,0.3)',
+    fmt: { totalRevenue: v => `PKR ${Number(v).toLocaleString()}` },
   },
   {
     id: 'high-spenders',
-    title: 'Customers Above Average Spend',
+    icon: '👑',
+    title: 'High-Value Customers',
+    sql: 'SELECT name, city, COUNT(orders) AS orders,\nSUM(totalAmount) AS totalSpend\nFROM Orders JOIN Customers WHERE status!=Cancelled\nGROUP BY customer HAVING spend > AVG(spend)',
     endpoint: '/reports/high-spenders',
-    description: 'Customers whose total spending exceeds the store average.',
+    columns: ['name', 'city', 'orderCount', 'totalSpend'],
+    color: 'rgba(139,92,246,0.12)',
+    border: 'rgba(139,92,246,0.3)',
+    fmt: { totalSpend: v => `PKR ${Number(v).toLocaleString()}` },
   },
   {
     id: 'low-stock',
-    title: 'Low Stock Alert',
+    icon: '⚠️',
+    title: 'Low Stock Alert (< 10 units)',
+    sql: 'SELECT name, stockQty, price, category, supplier\nFROM Products WHERE stockQuantity < 10\nORDER BY stockQuantity ASC',
     endpoint: '/reports/low-stock',
-    description: 'Products with stock quantity below the critical threshold.',
+    columns: ['productName', 'stockQuantity', 'price', 'category'],
+    color: 'rgba(239,68,68,0.12)',
+    border: 'rgba(239,68,68,0.3)',
+    fmt: { price: v => `PKR ${Number(v).toLocaleString()}` },
   },
   {
     id: 'order-history',
-    title: 'Order History with Payment Status',
+    icon: '📋',
+    title: 'Order History with Payments',
+    sql: 'SELECT customer, orderDate, totalAmount, orderStatus,\npaymentMethod, paymentStatus\nFROM Orders JOIN Customers JOIN Payments\nORDER BY orderDate DESC LIMIT 15',
     endpoint: '/reports/order-history',
-    description: 'Full order history including payment method and status.',
+    columns: ['customerName', 'orderDate', 'totalAmount', 'orderStatus', 'paymentMethod', 'paymentStatus'],
+    color: 'rgba(59,130,246,0.12)',
+    border: 'rgba(59,130,246,0.3)',
+    fmt: { totalAmount: v => `PKR ${Number(v).toLocaleString()}` },
   },
   {
     id: 'top-rated',
-    title: 'Top Rated Products',
+    icon: '⭐',
+    title: 'Top Rated Products (≥5 reviews)',
+    sql: 'SELECT name, category, COUNT(reviews) AS reviews,\nAVG(rating) AS avgRating\nFROM Reviews JOIN Products JOIN Categories\nGROUP BY product HAVING reviews >= 5\nORDER BY avgRating DESC LIMIT 10',
     endpoint: '/reports/top-rated',
-    description: 'Products sorted by average customer rating.',
+    columns: ['productName', 'category', 'reviewCount', 'avgRating'],
+    color: 'rgba(249,115,22,0.12)',
+    border: 'rgba(249,115,22,0.3)',
+    fmt: {},
   },
 ]
 
-function ReportTable({ data }) {
-  if (!data || data.length === 0) {
-    return <div className="empty-state" style={{ padding: '20px' }}>No results returned.</div>
-  }
-  const keys = Object.keys(data[0])
-  return (
-    <div style={{ overflowX: 'auto', marginTop: '12px' }}>
-      <table style={{ fontSize: '12.5px' }}>
-        <thead>
-          <tr>
-            {keys.map(k => (
-              <th key={k}>{k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row, i) => (
-            <tr key={i}>
-              {keys.map(k => {
-                let val = row[k]
-                if (val === null || val === undefined) val = '—'
-                else if (
-                  typeof val === 'string' &&
-                  (k.includes('date') || k.includes('_at'))
-                ) {
-                  val = new Date(val).toLocaleDateString()
-                } else if (
-                  typeof val === 'number' &&
-                  (k.includes('amount') || k.includes('revenue') || k.includes('price') || k.includes('spend') || k.includes('total'))
-                ) {
-                  val = `PKR ${Number(val).toLocaleString()}`
-                }
-                return <td key={k}>{String(val)}</td>
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+const STATUS_BADGE = {
+  Delivered: 'badge-green', Shipped: 'badge-purple', Confirmed: 'badge-blue',
+  Pending: 'badge-yellow', Cancelled: 'badge-red', Completed: 'badge-green', Failed: 'badge-red',
 }
 
 function ReportCard({ report }) {
-  const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [ran, setRan] = useState(false)
 
-  const runQuery = () => {
-    setLoading(true)
-    setError(null)
-    setRan(true)
-    apiFetch(report.endpoint)
-      .then(data => setResult(Array.isArray(data) ? data : data.data || data.results || [data]))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false))
+  const run = async () => {
+    setLoading(true); setError(null)
+    try {
+      const data = await apiFetch(report.endpoint)
+      setResult(Array.isArray(data) ? data : [])
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
-  return (
-    <div className="report-card">
-      <div className="report-card-header">
-        <div>
-          <div className="report-card-title">{report.title}</div>
-          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
-            {report.description}
-          </div>
-        </div>
-        <button className="run-btn" onClick={runQuery} disabled={loading}>
-          {loading ? '⏳' : '▶'} {loading ? 'Running...' : 'Run Query'}
-        </button>
-      </div>
+  const colLabel = col => col.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())
 
-      {ran && (
-        <div className="report-card-body">
-          {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-muted)', fontSize: '13px' }}>
-              <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }}></div>
-              Loading data from server...
-            </div>
-          )}
-          {error && !loading && (
-            <div className="error-box">Query failed: {error}</div>
-          )}
-          {result && !loading && (
-            <ReportTable data={result} />
+  return (
+    <div className="report-card" style={{ borderColor: result ? report.border : '' }}>
+      <div className="report-card-icon" style={{ background: report.color, border: `1px solid ${report.border}` }}>
+        {report.icon}
+      </div>
+      <div className="report-card-title">{report.title}</div>
+      <pre className="report-card-sql">{report.sql}</pre>
+      <button className="run-btn" onClick={run} disabled={loading}>
+        {loading ? '⏳ Running…' : result ? '🔄 Re-run Query' : '▶  Run Query'}
+      </button>
+      {error && <div className="error-box" style={{ marginTop: '12px', fontSize: '12px' }}>⚠️ {error}</div>}
+      {result && !loading && (
+        <div className="report-result">
+          {result.length === 0 ? (
+            <div style={{ color: 'var(--text-dim)', fontSize: '12.5px', textAlign: 'center', padding: '12px' }}>No results returned</div>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="result-table">
+                  <thead><tr>{report.columns.map(col => <th key={col}>{colLabel(col)}</th>)}</tr></thead>
+                  <tbody>
+                    {result.map((row, i) => (
+                      <tr key={i}>
+                        {report.columns.map(col => {
+                          const val = row[col] ?? '—'
+                          const isBadge = (col === 'orderStatus' || col === 'paymentStatus') && STATUS_BADGE[val]
+                          const fmt = report.fmt?.[col]
+                          return (
+                            <td key={col}>
+                              {isBadge
+                                ? <span className={`badge ${STATUS_BADGE[val]}`} style={{ fontSize: '10px', padding: '2px 7px' }}>{val}</span>
+                                : fmt ? fmt(val) : String(val)}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="result-count">{result.length} row{result.length !== 1 ? 's' : ''} returned</div>
+            </>
           )}
         </div>
       )}
@@ -136,14 +144,14 @@ export default function Reports() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Reports</h1>
-        <p className="page-subtitle">Run analytical queries on the ShopSphere database.</p>
+        <div className="page-header-left">
+          <h1 className="page-title">Analytics & Reports</h1>
+          <p className="page-subtitle">6 analytical queries — click Run to execute against live MongoDB data</p>
+        </div>
+        <div className="info-chip">📊 6 queries</div>
       </div>
-
-      <div className="reports-grid">
-        {REPORTS.map(report => (
-          <ReportCard key={report.id} report={report} />
-        ))}
+      <div className="report-grid">
+        {REPORTS.map(r => <ReportCard key={r.id} report={r} />)}
       </div>
     </div>
   )

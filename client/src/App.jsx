@@ -10,7 +10,7 @@ import Reports from './pages/Reports.jsx'
 
 export default function App() {
   return (
-    <div className="app-layout">
+    <div className="layout">
       <Sidebar />
       <main className="main-content">
         <Routes>

@@ -29,7 +29,7 @@ customerSchema.methods.matchPassword = function (entered) {
 
 // exclude soft-deleted by default
 customerSchema.pre(/^find/, function (next) {
-  if (!this.getQuery().includeDeleted) this.where({ isDeleted: false });
+  if (!this.getQuery().includeDeleted) this.where({ isDeleted: { $ne: true } });
   next();
 });
 
